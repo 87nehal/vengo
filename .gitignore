@@ -1,0 +1,9 @@
+bin/
+dist/
+coverage.out
+*.test
+tmp/
+.DS_Store
+PLAN.md
+FUTURE.md
+CHANGELOG.md
