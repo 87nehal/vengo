@@ -69,6 +69,23 @@ func (c *Config) Report() []Entry {
 	return report
 }
 
+func (c *Config) Keys() []string {
+	keys := make([]string, 0, len(c.values))
+	for key := range c.values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (c *Config) SourceOf(key string) (string, bool) {
+	entry, exists := c.values[key]
+	if !exists {
+		return "", false
+	}
+	return entry.Source, true
+}
+
 type MapSource struct {
 	name   string
 	values map[string]string

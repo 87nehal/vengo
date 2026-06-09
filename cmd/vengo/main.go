@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/87nehal/vengo/config"
 )
 
 const version = "0.1.0-dev"
@@ -38,6 +41,12 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		_, _ = fmt.Fprintf(stdout, "created %s\n", args[1])
 		return 0
+	case "config":
+		profile := ""
+		if len(args) > 1 {
+			profile = args[1]
+		}
+		return runConfig(stdout, stderr, profile)
 	case "help", "-h", "--help":
 		printHelp(stdout)
 		return 0
@@ -52,6 +61,7 @@ func printHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "vengo commands:")
 	_, _ = fmt.Fprintln(w, "  version")
 	_, _ = fmt.Fprintln(w, "  new <dir> [module]")
+	_, _ = fmt.Fprintln(w, "  config [profile]")
 }
 
 func createProject(dir string, module string) error {
@@ -117,4 +127,31 @@ func main() {
 `, appName, appName)
 
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainSource), 0o644)
+}
+
+func runConfig(stdout io.Writer, stderr io.Writer, profile string) int {
+	if profile == "" {
+		profile = config.ActiveProfile()
+	}
+
+	cfg, err := config.LoadDefaults(context.Background(), profile)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load config: %v\n", err)
+		return 1
+	}
+
+	report := cfg.Report()
+	if len(report) == 0 {
+		_, _ = fmt.Fprintln(stdout, "no configuration values found")
+		return 0
+	}
+
+	if profile != "" {
+		_, _ = fmt.Fprintf(stdout, "active profile: %s\n\n", profile)
+	}
+
+	for _, entry := range report {
+		_, _ = fmt.Fprintf(stdout, "%-40s = %-20s [%s]\n", entry.Key, entry.Value, entry.Source)
+	}
+	return 0
 }

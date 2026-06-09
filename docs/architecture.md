@@ -5,7 +5,7 @@ The first implementation uses a small set of packages instead of a multi-module 
 ## Packages
 
 - `core`: application lifecycle, module registration, hooks, and named services.
-- `config`: configuration sources, precedence, lookup, and redacted reporting.
+- `config`: configuration sources (TOML, JSON, env, embed.FS), precedence, typed struct binding, validation, and redacted reporting.
 - `autoconfigure`: conditional configuration registry.
 - `web`: `net/http` based server module.
 - `actuator`: health endpoint module.
@@ -23,11 +23,10 @@ The first implementation uses a small set of packages instead of a multi-module 
 
 ## Near-Term Next Steps
 
-1. Add typed configuration binding.
-2. Add route listing diagnostics.
-3. Add dependency graph validation.
-4. Add CLI `doctor` and `explain` commands.
-5. Add middleware and structured error helpers to the web module.
+1. Add route listing diagnostics.
+2. Add dependency graph validation.
+3. Add CLI `doctor` and `explain` commands.
+4. Add middleware and structured error helpers to the web module.
 
 ## Current Verification
 

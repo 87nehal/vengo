@@ -69,3 +69,61 @@ func TestNewCommandDefaultsModuleToProjectName(t *testing.T) {
 		t.Fatalf("unexpected go.mod content: %s", goMod)
 	}
 }
+
+func TestConfigCommandShowsResolvedConfig(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	content := []byte("[server]\nport = 8080\n\n[app]\nname = \"test-app\"\n")
+	if err := os.WriteFile(filepath.Join(dir, "application.toml"), content, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"config"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "server.port") {
+		t.Fatalf("output missing server.port: %s", output)
+	}
+	if !strings.Contains(output, "app.name") {
+		t.Fatalf("output missing app.name: %s", output)
+	}
+}
+
+func TestConfigCommandRedactsSecrets(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	content := []byte("[database]\npassword = \"super-secret\"\n")
+	if err := os.WriteFile(filepath.Join(dir, "application.toml"), content, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"config"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "super-secret") {
+		t.Fatalf("output contains unredacted secret: %s", output)
+	}
+	if !strings.Contains(output, "<redacted>") {
+		t.Fatalf("output missing redacted marker: %s", output)
+	}
+}

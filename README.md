@@ -6,7 +6,7 @@ This repository is currently a starter skeleton. The first implementation includ
 
 - core application lifecycle and module registration
 - named service registry with typed lookup helpers
-- configuration source loading with redacted reports
+- TOML/JSON configuration with typed struct binding, profile support, and redacted reports
 - small auto-configuration registry
 - `net/http` based web module
 - actuator-style health endpoint module
@@ -49,11 +49,35 @@ app := core.New("hello", web.New(":8080"), actuator.NewHealth())
 Use options when you need a custom path or explicit checks:
 
 ```go
-health := actuator.NewHealthWithOptions(
+health := actuator.NewHealth(
 	actuator.WithPath("/healthz"),
 	actuator.WithChecks(actuator.Check{Name: "self", Check: func(context.Context) error { return nil }}),
 )
 ```
+
+## Configuration
+
+Load `application.toml` (or `.json`) with profile overrides and bind into typed structs:
+
+```go
+type ServerConfig struct {
+    Port int    `config:"server.port" default:"8080"`
+    Host string `config:"server.host" default:"localhost"`
+}
+
+cfg, _ := config.LoadDefaults(ctx, config.ActiveProfile())
+
+var serverCfg ServerConfig
+config.Bind(cfg, &serverCfg)
+```
+
+Source precedence (later overrides earlier):
+
+1. `application.toml` (from `.` or `./config/`)
+2. `application-{profile}.toml`
+3. Environment variables with `APP_` prefix (`APP_SERVER_PORT` → `server.port`)
+
+Set the active profile via `APP_PROFILE` or `VENGO_PROFILE` environment variables.
 
 ## Design Direction
 

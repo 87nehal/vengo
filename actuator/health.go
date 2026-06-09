@@ -23,11 +23,7 @@ type HealthModule struct {
 
 type Option func(*HealthModule)
 
-func NewHealth(checks ...Check) *HealthModule {
-	return NewHealthWithOptions(WithChecks(checks...))
-}
-
-func NewHealthWithOptions(options ...Option) *HealthModule {
+func NewHealth(options ...Option) *HealthModule {
 	module := &HealthModule{path: "/actuator/health"}
 	for _, option := range options {
 		if option != nil {
@@ -35,6 +31,10 @@ func NewHealthWithOptions(options ...Option) *HealthModule {
 		}
 	}
 	return module
+}
+
+func NewHealthWithOptions(options ...Option) *HealthModule {
+	return NewHealth(options...)
 }
 
 func WithPath(path string) Option {

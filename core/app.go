@@ -8,6 +8,8 @@ import (
 	"sync"
 )
 
+const ConfigServiceName = "config"
+
 type Module interface {
 	Name() string
 	Configure(app *App) error
@@ -96,6 +98,19 @@ func (a *App) ServiceNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func (a *App) SetConfig(cfg any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.services[ConfigServiceName] = cfg
+}
+
+func (a *App) Config() (any, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	value, exists := a.services[ConfigServiceName]
+	return value, exists
 }
 
 func Get[T any](app *App, name string) (T, error) {
