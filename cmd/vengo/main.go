@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/87nehal/vengo/config"
 )
@@ -47,6 +49,8 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 			profile = args[1]
 		}
 		return runConfig(stdout, stderr, profile)
+	case "deps":
+		return runDeps(stdout, stderr)
 	case "help", "-h", "--help":
 		printHelp(stdout)
 		return 0
@@ -62,6 +66,7 @@ func printHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  version")
 	_, _ = fmt.Fprintln(w, "  new <dir> [module]")
 	_, _ = fmt.Fprintln(w, "  config [profile]")
+	_, _ = fmt.Fprintln(w, "  deps")
 }
 
 func createProject(dir string, module string) error {
@@ -152,6 +157,56 @@ func runConfig(stdout io.Writer, stderr io.Writer, profile string) int {
 
 	for _, entry := range report {
 		_, _ = fmt.Fprintf(stdout, "%-40s = %-20s [%s]\n", entry.Key, entry.Value, entry.Source)
+	}
+	return 0
+}
+
+type depsNode struct {
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Dependencies []string `json:"dependencies,omitempty"`
+}
+
+func runDeps(stdout io.Writer, stderr io.Writer) int {
+	data, err := os.ReadFile("vengo-deps.json")
+	if err != nil {
+		if os.IsNotExist(err) {
+			_, _ = fmt.Fprintln(stderr, "no vengo-deps.json found in current directory")
+			_, _ = fmt.Fprintln(stderr, "generate it from your app with:")
+			_, _ = fmt.Fprintln(stderr, "  data, _ := app.Container().GraphJSON()")
+			_, _ = fmt.Fprintln(stderr, "  os.WriteFile(\"vengo-deps.json\", data, 0644)")
+			return 1
+		}
+		_, _ = fmt.Fprintf(stderr, "read vengo-deps.json: %v\n", err)
+		return 1
+	}
+
+	var nodes []depsNode
+	if err := json.Unmarshal(data, &nodes); err != nil {
+		_, _ = fmt.Fprintf(stderr, "parse vengo-deps.json: %v\n", err)
+		return 1
+	}
+
+	if len(nodes) == 0 {
+		_, _ = fmt.Fprintln(stdout, "no providers registered")
+		return 0
+	}
+
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Name < nodes[j].Name
+	})
+
+	_, _ = fmt.Fprintln(stdout, "Dependency Graph:")
+	_, _ = fmt.Fprintln(stdout, "--------------------------------------------------")
+	for _, node := range nodes {
+		if len(node.Dependencies) == 0 {
+			_, _ = fmt.Fprintf(stdout, "  %s (%s)\n", node.Name, node.Type)
+		} else {
+			_, _ = fmt.Fprintf(stdout, "  %s (%s)\n", node.Name, node.Type)
+			for _, dep := range node.Dependencies {
+				_, _ = fmt.Fprintf(stdout, "    <- %s\n", dep)
+			}
+		}
 	}
 	return 0
 }

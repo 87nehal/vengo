@@ -127,3 +127,80 @@ func TestConfigCommandRedactsSecrets(t *testing.T) {
 		t.Fatalf("output missing redacted marker: %s", output)
 	}
 }
+
+func TestDepsCommandPrintsGraph(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	graph := `[{"name":"newRepo","type":"*Repo","dependencies":[]},{"name":"newService","type":"*Service","dependencies":["newRepo"]}]`
+	if err := os.WriteFile(filepath.Join(dir, "vengo-deps.json"), []byte(graph), 0o644); err != nil {
+		t.Fatalf("write deps file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"deps"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "Dependency Graph") {
+		t.Fatalf("output missing header: %s", output)
+	}
+	if !strings.Contains(output, "newRepo") {
+		t.Fatalf("output missing newRepo: %s", output)
+	}
+	if !strings.Contains(output, "newService") {
+		t.Fatalf("output missing newService: %s", output)
+	}
+	if !strings.Contains(output, "<- newRepo") {
+		t.Fatalf("output missing dependency arrow: %s", output)
+	}
+}
+
+func TestDepsCommandMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"deps"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "no vengo-deps.json") {
+		t.Fatalf("stderr = %q, want missing file message", stderr.String())
+	}
+}
+
+func TestDepsCommandEmptyGraph(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	if err := os.WriteFile(filepath.Join(dir, "vengo-deps.json"), []byte("[]"), 0o644); err != nil {
+		t.Fatalf("write deps file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"deps"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "no providers registered") {
+		t.Fatalf("stdout = %q, want empty graph message", stdout.String())
+	}
+}

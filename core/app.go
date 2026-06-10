@@ -29,14 +29,16 @@ type App struct {
 	hooks        []Hook
 	startedHooks []Hook
 	services     map[string]any
+	container    *Container
 	configured   bool
 	started      bool
 }
 
 func New(name string, modules ...Module) *App {
 	app := &App{
-		name:     name,
-		services: make(map[string]any),
+		name:      name,
+		services:  make(map[string]any),
+		container: newContainer(),
 	}
 	app.modules = append(app.modules, modules...)
 	return app
