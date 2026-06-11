@@ -40,6 +40,14 @@ func bindStruct(cfg *Config, value reflect.Value, prefix string) error {
 		}
 
 		configKey := field.Tag.Get("config")
+		if configKey == "" {
+			if msTag := field.Tag.Get("mapstructure"); msTag != "" {
+				parts := strings.Split(msTag, ",")
+				if parts[0] != "" {
+					configKey = parts[0]
+				}
+			}
+		}
 		defaultValue, hasDefault := field.Tag.Lookup("default")
 
 		if configKey == "" && fieldValue.Kind() == reflect.Struct && !isSpecialType(fieldValue.Type()) {

@@ -34,17 +34,21 @@ func newContainer() *Container {
 	}
 }
 
-func (c *Container) addProvider(name string, fn any) error {
+func newProvider(name string, fn any) (*provider, error) {
+	if fn == nil {
+		return nil, fmt.Errorf("provider %q must be a function, got <nil>", name)
+	}
+
 	fnVal := reflect.ValueOf(fn)
 	fnType := fnVal.Type()
 
 	if fnType.Kind() != reflect.Func {
-		return fmt.Errorf("provider %q must be a function, got %T", name, fn)
+		return nil, fmt.Errorf("provider %q must be a function, got %T", name, fn)
 	}
 
 	numOut := fnType.NumOut()
 	if numOut == 0 || numOut > 2 {
-		return fmt.Errorf("provider %q must return 1 or 2 values, got %d", name, numOut)
+		return nil, fmt.Errorf("provider %q must return 1 or 2 values, got %d", name, numOut)
 	}
 
 	outType := fnType.Out(0)
@@ -52,7 +56,7 @@ func (c *Container) addProvider(name string, fn any) error {
 	if numOut == 2 {
 		errType := reflect.TypeOf((*error)(nil)).Elem()
 		if !fnType.Out(1).Implements(errType) {
-			return fmt.Errorf("provider %q second return value must be error, got %s", name, fnType.Out(1))
+			return nil, fmt.Errorf("provider %q second return value must be error, got %s", name, fnType.Out(1))
 		}
 	}
 
@@ -61,20 +65,43 @@ func (c *Container) addProvider(name string, fn any) error {
 		paramTypes[i] = fnType.In(i)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if _, exists := c.providers[outType]; exists {
-		return fmt.Errorf("duplicate provider for type %s", outType)
-	}
-
-	c.providers[outType] = &provider{
+	return &provider{
 		name:       name,
 		fn:         fnVal,
 		fnType:     fnType,
 		outType:    outType,
 		paramTypes: paramTypes,
+	}, nil
+}
+
+func (c *Container) addProvider(name string, fn any) error {
+	prov, err := newProvider(name, fn)
+	if err != nil {
+		return err
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, exists := c.providers[prov.outType]; exists {
+		return fmt.Errorf("duplicate provider for type %s", prov.outType)
+	}
+
+	c.providers[prov.outType] = prov
+	return nil
+}
+
+func (c *Container) overrideProvider(name string, fn any) error {
+	prov, err := newProvider(name, fn)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.resolved, prov.outType)
+	c.providers[prov.outType] = prov
 	return nil
 }
 
@@ -289,7 +316,14 @@ func (a *App) findServiceByType(targetType reflect.Type) (any, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, svc := range a.services {
-		if reflect.TypeOf(svc) == targetType {
+		if svc == nil {
+			continue
+		}
+		svcType := reflect.TypeOf(svc)
+		if svcType == targetType {
+			return svc, true
+		}
+		if targetType.Kind() == reflect.Interface && svcType.Implements(targetType) {
 			return svc, true
 		}
 	}

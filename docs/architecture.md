@@ -9,9 +9,10 @@ The first implementation uses a small set of packages instead of a multi-module 
 - `autoconfigure`: conditional configuration registry.
 - `web`: `net/http` based server module with middleware chains, route groups, structured errors, JSON binding, route registry, and request logging.
 - `actuator`: production-readiness modules — health checks (liveness/readiness), info endpoint, metrics (counters/gauges), structured slog logging, and OpenTelemetry-compatible tracing hooks.
+- `data`: `database/sql` integration, connection pool config, named DB service registration, transactions, SQL migrations, DB health checks, and explicit slow query logging helpers.
 - `starter/web`: convenience package for creating the web module.
-- `cmd/vengo`: CLI entry point for version checks, project generation, config inspection, and dependency graph display.
-- `examples/hello`: runnable example application.
+- `cmd/vengo`: CLI entry point for version checks, project generation, config inspection, dependency graph display, route listing, environment doctor checks, and dev-mode (`vengo run`) file watching.
+- `examples`: runnable example applications for hello-world web usage, data/sql, security, testing, and CLI-worker patterns.
 
 ## Design Rules
 
@@ -83,15 +84,16 @@ data, _ := app.Container().GraphJSON()
 
 ## Near-Term Next Steps
 
-1. Add CLI `doctor`, `routes`, and future explain commands.
-2. Add Phase 5 polish such as module selection flags for `vengo new` and `vengo run` dev mode.
-3. Begin Phase 6 (data access) or Phase 8 (testing toolkit).
+1. Keep docs and examples aligned with the beta API.
+2. Add optional data examples for GORM and sqlc if they become useful to users.
+3. Continue release hardening with compatibility and CI checks.
 
 ## Current Verification
 
 Run these commands before handing off scaffold changes:
 
 ```bash
-go test ./...
+go test ./... -count=1
 go vet ./...
+go test ./... -shuffle=on -count=3
 ```

@@ -89,8 +89,11 @@ func TestNewCommandCreatesProjectFiles(t *testing.T) {
 	if !strings.Contains(string(mainSource), "github.com/87nehal/vengo/core") {
 		t.Fatalf("generated main.go does not import the framework: %s", mainSource)
 	}
-	if !strings.Contains(string(mainSource), "hello from orders-api") {
+	if !strings.Contains(string(mainSource), "orders-api") {
 		t.Fatalf("generated main.go does not use the project name: %s", mainSource)
+	}
+	if !strings.Contains(string(mainSource), "config.Bind") {
+		t.Fatalf("generated main.go does not use typed config binding: %s", mainSource)
 	}
 }
 

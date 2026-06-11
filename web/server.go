@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -184,6 +187,8 @@ func BindJSON(r *http.Request, target any) *Error {
 }
 
 func (s *Server) Use(middlewares ...Middleware) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, mw := range middlewares {
 		if mw != nil {
 			s.middlewares = append(s.middlewares, mw)
@@ -200,15 +205,21 @@ func (s *Server) Group(prefix string, middlewares ...Middleware) *Group {
 }
 
 func (g *Group) HandleFunc(pattern string, handler http.HandlerFunc) {
-	fullPattern := g.prefix + pattern
-	wrappedHandler := applyMiddleware(http.HandlerFunc(handler), g.middlewares)
-	g.server.Handle(fullPattern, wrappedHandler)
+	g.server.Handle(g.fullPattern(pattern), applyMiddleware(http.HandlerFunc(handler), g.middlewares))
 }
 
 func (g *Group) Handle(pattern string, handler http.Handler) {
-	fullPattern := g.prefix + pattern
-	wrappedHandler := applyMiddleware(handler, g.middlewares)
-	g.server.Handle(fullPattern, wrappedHandler)
+	g.server.Handle(g.fullPattern(pattern), applyMiddleware(handler, g.middlewares))
+}
+
+// fullPattern prepends the group prefix to the path component of the
+// pattern, preserving an optional Go 1.22 method prefix such as "GET /users".
+func (g *Group) fullPattern(pattern string) string {
+	method, path := parsePattern(pattern)
+	if method == "" {
+		return g.prefix + path
+	}
+	return method + " " + g.prefix + path
 }
 
 func (g *Group) Use(middlewares ...Middleware) {
@@ -228,12 +239,54 @@ func (s *Server) Addr() string {
 	return s.addr
 }
 
+func (s *Server) SetAddr(addr string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addr = addr
+}
+
 func (s *Server) Routes() []Route {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := make([]Route, len(s.routes))
 	copy(result, s.routes)
 	return result
+}
+
+func (s *Server) RoutesJSON() ([]byte, error) {
+	routes := s.Routes()
+	type jsonRoute struct {
+		Method  string `json:"method"`
+		Pattern string `json:"pattern"`
+	}
+	out := make([]jsonRoute, len(routes))
+	for i, r := range routes {
+		out[i] = jsonRoute{Method: r.Method, Pattern: r.Pattern}
+	}
+	return json.MarshalIndent(out, "", "  ")
+}
+
+func (s *Server) FormatRoutes(w io.Writer) {
+	routes := s.Routes()
+	if len(routes) == 0 {
+		fmt.Fprintln(w, "no routes registered")
+		return
+	}
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].Pattern == routes[j].Pattern {
+			return routes[i].Method < routes[j].Method
+		}
+		return routes[i].Pattern < routes[j].Pattern
+	})
+	fmt.Fprintln(w, "Registered Routes:")
+	fmt.Fprintln(w, strings.Repeat("-", 50))
+	for _, r := range routes {
+		if r.Method == "" {
+			fmt.Fprintf(w, "  %-7s %s\n", "*", r.Pattern)
+		} else {
+			fmt.Fprintf(w, "  %-7s %s\n", r.Method, r.Pattern)
+		}
+	}
 }
 
 func (s *Server) Start(context.Context) error {
@@ -250,7 +303,7 @@ func (s *Server) Start(context.Context) error {
 
 	server := &http.Server{
 		Addr:              listener.Addr().String(),
-		Handler:           s.mux,
+		Handler:           applyMiddleware(s.mux, s.middlewares),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	s.listener = listener

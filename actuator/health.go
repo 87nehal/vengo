@@ -87,10 +87,6 @@ func NewHealth(options ...Option) *HealthModule {
 	return module
 }
 
-func NewHealthWithOptions(options ...Option) *HealthModule {
-	return NewHealth(options...)
-}
-
 func WithPath(path string) Option {
 	return func(module *HealthModule) {
 		if path == "" {

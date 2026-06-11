@@ -13,7 +13,12 @@ var searchDirs = []string{".", "config"}
 func DefaultSources(profile string) []Source {
 	var sources []Source
 
-	for _, dir := range searchDirs {
+	dirs := searchDirs
+	if envDir := os.Getenv("VENGO_CONFIG_DIR"); envDir != "" {
+		dirs = []string{envDir}
+	}
+
+	for _, dir := range dirs {
 		for _, ext := range configExtensions {
 			path := filepath.Join(dir, "application"+ext)
 			if fileExists(path) {
@@ -24,7 +29,7 @@ func DefaultSources(profile string) []Source {
 	}
 
 	if profile != "" {
-		for _, dir := range searchDirs {
+		for _, dir := range dirs {
 			for _, ext := range configExtensions {
 				path := filepath.Join(dir, "application-"+profile+ext)
 				if fileExists(path) {

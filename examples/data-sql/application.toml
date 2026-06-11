@@ -1,0 +1,9 @@
+database.driver = "sqlite"
+database.dsn = "file:vengo-data-example?mode=memory&cache=shared"
+database.max-open-conns = 1
+database.max-idle-conns = 1
+database.conn-max-lifetime = "0s"
+database.conn-max-idle-time = "0s"
+database.slow-query-threshold = "1ms"
+database.migrations-table = "schema_migrations"
+database.migrations-path-prefix = "migrations"

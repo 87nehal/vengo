@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25.0"
 
       - name: Run tests
         run: go test ./...
@@ -25,5 +25,8 @@ jobs:
       - name: Build CLI
         run: go build ./cmd/vengo
 
-      - name: Build example
-        run: go build ./examples/hello
+      - name: Build examples
+        run: |
+          go build ./examples/hello
+          go build ./examples/testing-demo
+          go build ./examples/cli-worker

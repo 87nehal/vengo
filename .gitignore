@@ -6,3 +6,6 @@ tmp/
 .DS_Store
 docs/*
 *exe
+*.log
+*.out
+*.md

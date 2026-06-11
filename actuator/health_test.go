@@ -70,7 +70,7 @@ func TestHealthEndpointReportsFailure(t *testing.T) {
 
 func TestHealthEndpointSupportsCustomPath(t *testing.T) {
 	server := web.New(":0")
-	app := core.New("test", server, NewHealthWithOptions(WithPath("/healthz")))
+	app := core.New("test", server, NewHealth(WithPath("/healthz")))
 
 	if err := app.Start(context.Background()); err != nil {
 		t.Fatalf("start app: %v", err)

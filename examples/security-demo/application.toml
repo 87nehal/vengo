@@ -1,0 +1,17 @@
+[server]
+port = 8081
+
+[security.session]
+enabled = true
+secret = "my-secure-session-key-vengo-demo-app"
+
+[security.headers]
+enabled = true
+
+[security.jwt]
+enabled = false
+secret = "demo-signing-secret-key-12345"
+issuer = "vengo-demo"
+
+[security.csrf]
+enabled = false # disabled for easy curl testing

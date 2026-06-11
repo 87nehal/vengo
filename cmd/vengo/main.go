@@ -13,6 +13,7 @@ import (
 )
 
 const version = "0.1.0-dev"
+const newUsage = "usage: vengo new <dir> [module] [--modules=web,data,auth]"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -30,14 +31,15 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	case "new":
 		if len(args) < 2 {
-			_, _ = fmt.Fprintln(stderr, "usage: vengo new <dir> [module]")
+			_, _ = fmt.Fprintln(stderr, newUsage)
 			return 2
 		}
-		module := filepath.Base(args[1])
-		if len(args) > 2 {
-			module = args[2]
+		module, modules, code := parseNewArgs(args[1:])
+		if code != 0 {
+			_, _ = fmt.Fprintln(stderr, newUsage)
+			return code
 		}
-		if err := createProject(args[1], module); err != nil {
+		if err := createProject(args[1], module, modules); err != nil {
 			_, _ = fmt.Fprintf(stderr, "create project: %v\n", err)
 			return 1
 		}
@@ -51,6 +53,12 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runConfig(stdout, stderr, profile)
 	case "deps":
 		return runDeps(stdout, stderr)
+	case "routes":
+		return runRoutes(stdout, stderr)
+	case "doctor":
+		return runDoctor(stdout, stderr)
+	case "run":
+		return runRun(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		printHelp(stdout)
 		return 0
@@ -64,12 +72,15 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 func printHelp(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "vengo commands:")
 	_, _ = fmt.Fprintln(w, "  version")
-	_, _ = fmt.Fprintln(w, "  new <dir> [module]")
+	_, _ = fmt.Fprintln(w, "  new <dir> [module] [--modules=web,data,auth]")
 	_, _ = fmt.Fprintln(w, "  config [profile]")
 	_, _ = fmt.Fprintln(w, "  deps")
+	_, _ = fmt.Fprintln(w, "  routes")
+	_, _ = fmt.Fprintln(w, "  doctor")
+	_, _ = fmt.Fprintln(w, "  run [path] [--build=cmd] [--no-run]")
 }
 
-func createProject(dir string, module string) error {
+func createProject(dir string, module string, modules []projectModule) error {
 	if module == "" || module == "." || module == string(filepath.Separator) {
 		return fmt.Errorf("module path cannot be empty")
 	}
@@ -84,54 +95,34 @@ func createProject(dir string, module string) error {
 		return err
 	}
 
-	goMod := fmt.Sprintf("module %s\n\ngo 1.22\n", module)
+	appName := filepath.Base(dir)
+
+	goMod := fmt.Sprintf("module %s\n\ngo 1.25.0\n\nrequire github.com/87nehal/vengo v0.0.0\n\nreplace github.com/87nehal/vengo => %s\n", module, vengoLocalPath())
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		return err
 	}
 
-	appName := filepath.Base(dir)
-	mainSource := fmt.Sprintf(`package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"github.com/87nehal/vengo/actuator"
-	"github.com/87nehal/vengo/core"
-	"github.com/87nehal/vengo/web"
-)
-
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	server := web.New(":8080")
-	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintln(w, "hello from %s")
-	})
-
-	app := core.New("%s", server, actuator.NewHealth())
-	if err := app.Start(ctx); err != nil {
-		log.Fatal(err)
+	mainSource := renderProjectTemplate(appName, module, modules)
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainSource), 0o644); err != nil {
+		return err
 	}
-	log.Printf("listening on %%s", server.Addr())
 
-	<-ctx.Done()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := app.Stop(shutdownCtx); err != nil {
-		log.Fatal(err)
+	usesData := hasModule(modules, moduleData)
+	usesAuth := hasModule(modules, moduleAuth)
+
+	appToml := fmt.Sprintf("[app]\nname = %q\n", appName)
+	if usesData {
+		appToml += "\n[database]\ndriver = \"sqlite\"\ndsn = \"file:vengo.db?cache=shared\"\n"
 	}
-}
-`, appName, appName)
+	if usesAuth {
+		appToml += "\n[security.session]\nenabled = true\nsecret = \"a-secure-development-session-secret-change-me\"\n"
+	}
 
-	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainSource), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "application.toml"), []byte(appToml), 0o644); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func runConfig(stdout io.Writer, stderr io.Writer, profile string) int {

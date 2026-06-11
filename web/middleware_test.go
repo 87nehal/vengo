@@ -67,6 +67,41 @@ func TestMiddlewareNilIgnored(t *testing.T) {
 	}
 }
 
+func TestMiddlewareAppliedToStartedServer(t *testing.T) {
+	server := New("127.0.0.1:0")
+
+	server.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Real", "applied")
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	server.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello"))
+	})
+
+	app := core.New("test", server)
+	if err := app.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer app.Stop(context.Background())
+
+	resp, err := http.Get("http://" + server.Addr() + "/hello")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if resp.Header.Get("X-Real") != "applied" {
+		t.Errorf("header X-Real = %q, want %q (middleware registered via Use must run on the started server)", resp.Header.Get("X-Real"), "applied")
+	}
+}
+
 func TestMiddlewareWithRealServer(t *testing.T) {
 	server := New(":0")
 

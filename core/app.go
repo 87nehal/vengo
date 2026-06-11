@@ -108,6 +108,17 @@ func (a *App) SetConfig(cfg any) {
 	a.services[ConfigServiceName] = cfg
 }
 
+func (a *App) OverrideService(name string, value any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.services[name] = value
+}
+
+func (a *App) OverrideProvider(constructor any) error {
+	name := providerName(constructor)
+	return a.container.overrideProvider(name, constructor)
+}
+
 func (a *App) Config() (any, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -129,7 +140,7 @@ func Get[T any](app *App, name string) (T, error) {
 }
 
 func (a *App) Start(ctx context.Context) error {
-	if err := a.configure(); err != nil {
+	if err := a.Configure(); err != nil {
 		return err
 	}
 
@@ -175,7 +186,7 @@ func (a *App) Stop(ctx context.Context) error {
 	return stopHooks(ctx, hooks)
 }
 
-func (a *App) configure() error {
+func (a *App) Configure() error {
 	a.mu.Lock()
 	if a.configured {
 		a.mu.Unlock()

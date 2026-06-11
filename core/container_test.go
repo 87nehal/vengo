@@ -285,6 +285,17 @@ func TestProvideNonFunctionFails(t *testing.T) {
 	}
 }
 
+func TestProvideNilFails(t *testing.T) {
+	app := New("test")
+	err := Provide(app, nil)
+	if err == nil {
+		t.Fatal("expected error for nil provider")
+	}
+	if !strings.Contains(err.Error(), "must be a function") {
+		t.Fatalf("error = %q, want 'must be a function'", err.Error())
+	}
+}
+
 func TestProvideZeroReturnFails(t *testing.T) {
 	app := New("test")
 	constructor := func() {}

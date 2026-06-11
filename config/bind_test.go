@@ -257,3 +257,30 @@ func TestBindInvalidBool(t *testing.T) {
 		t.Fatal("expected error for invalid bool value")
 	}
 }
+
+func TestBindMapstructureTag(t *testing.T) {
+	cfg, err := Load(context.Background(), NewMapSource("test", map[string]string{
+		"server_port": "9090",
+		"server_host": "127.0.0.1",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	type Config struct {
+		Port int    `mapstructure:"server_port"`
+		Host string `mapstructure:"server_host,omitempty"`
+	}
+
+	var c Config
+	if err := Bind(cfg, &c); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	if c.Port != 9090 {
+		t.Fatalf("port = %d, want 9090", c.Port)
+	}
+	if c.Host != "127.0.0.1" {
+		t.Fatalf("host = %q, want 127.0.0.1", c.Host)
+	}
+}

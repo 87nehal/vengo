@@ -185,6 +185,35 @@ func TestMultipleGroups(t *testing.T) {
 	}
 }
 
+func TestGroupMethodPattern(t *testing.T) {
+	server := New(":0")
+
+	apiGroup := server.Group("/api")
+	apiGroup.HandleFunc("GET /users", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("users"))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	if rec.Body.String() != "users" {
+		t.Errorf("body = %q, want %q", rec.Body.String(), "users")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/users", nil)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestGroupHandle(t *testing.T) {
 	server := New(":0")
 
