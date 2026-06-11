@@ -101,7 +101,7 @@ func TestBindConfigOverridesDefault(t *testing.T) {
 
 func TestBindNestedStruct(t *testing.T) {
 	cfg, err := Load(context.Background(), NewMapSource("test", map[string]string{
-		"server.port": "9090",
+		"server.port":   "9090",
 		"database.host": "db.local",
 		"database.port": "5432",
 	}))
@@ -115,7 +115,7 @@ func TestBindNestedStruct(t *testing.T) {
 	}
 
 	type AppConfig struct {
-		Port int            `config:"server.port"`
+		Port int `config:"server.port"`
 		DB   DatabaseConfig
 	}
 
@@ -127,6 +127,37 @@ func TestBindNestedStruct(t *testing.T) {
 	if c.Port != 9090 {
 		t.Fatalf("port = %d, want 9090", c.Port)
 	}
+	if c.DB.Host != "db.local" {
+		t.Fatalf("db.host = %q, want db.local", c.DB.Host)
+	}
+	if c.DB.Port != 5432 {
+		t.Fatalf("db.port = %d, want 5432", c.DB.Port)
+	}
+}
+
+func TestBindNestedStructUsesFieldNamePrefix(t *testing.T) {
+	cfg, err := Load(context.Background(), NewMapSource("test", map[string]string{
+		"db.host": "db.local",
+		"db.port": "5432",
+	}))
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	type DatabaseConfig struct {
+		Host string
+		Port int
+	}
+
+	type AppConfig struct {
+		DB DatabaseConfig
+	}
+
+	var c AppConfig
+	if err := Bind(cfg, &c); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
 	if c.DB.Host != "db.local" {
 		t.Fatalf("db.host = %q, want db.local", c.DB.Host)
 	}

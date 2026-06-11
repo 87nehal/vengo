@@ -7,8 +7,8 @@ The first implementation uses a small set of packages instead of a multi-module 
 - `core`: application lifecycle, module registration, hooks, named services, and dependency injection container.
 - `config`: configuration sources (TOML, JSON, env, embed.FS), precedence, typed struct binding, validation, and redacted reporting.
 - `autoconfigure`: conditional configuration registry.
-- `web`: `net/http` based server module.
-- `actuator`: health endpoint module.
+- `web`: `net/http` based server module with middleware chains, route groups, structured errors, JSON binding, route registry, and request logging.
+- `actuator`: production-readiness modules — health checks (liveness/readiness), info endpoint, metrics (counters/gauges), structured slog logging, and OpenTelemetry-compatible tracing hooks.
 - `starter/web`: convenience package for creating the web module.
 - `cmd/vengo`: CLI entry point for version checks, project generation, config inspection, and dependency graph display.
 - `examples/hello`: runnable example application.
@@ -83,9 +83,9 @@ data, _ := app.Container().GraphJSON()
 
 ## Near-Term Next Steps
 
-1. Add route listing diagnostics.
-2. Add CLI `doctor` and `explain` commands.
-3. Add middleware and structured error helpers to the web module.
+1. Add CLI `doctor`, `routes`, and future explain commands.
+2. Add Phase 5 polish such as module selection flags for `vengo new` and `vengo run` dev mode.
+3. Begin Phase 6 (data access) or Phase 8 (testing toolkit).
 
 ## Current Verification
 

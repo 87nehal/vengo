@@ -136,3 +136,41 @@ func TestNewHealthAcceptsPathAndChecks(t *testing.T) {
 		t.Fatalf("body did not contain UP status: %s", response.Body.String())
 	}
 }
+
+func TestHealthEndpointDisabled(t *testing.T) {
+	server := web.New(":0")
+	health := NewHealth(WithEnabled(false))
+	app := core.New("test", server, health)
+
+	if err := app.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer app.Stop(context.Background())
+
+	req := httptest.NewRequest(http.MethodGet, "/actuator/health", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 when disabled", rec.Code)
+	}
+}
+
+func TestHealthEndpointEnabledByDefault(t *testing.T) {
+	server := web.New(":0")
+	health := NewHealth()
+	app := core.New("test", server, health)
+
+	if err := app.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer app.Stop(context.Background())
+
+	req := httptest.NewRequest(http.MethodGet, "/actuator/health", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}

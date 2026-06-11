@@ -21,6 +21,49 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+func TestHelpCommandIncludesAvailableCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := run([]string{"help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	output := stdout.String()
+	for _, command := range []string{"version", "new <dir> [module]", "config [profile]", "deps"} {
+		if !strings.Contains(output, command) {
+			t.Fatalf("help output missing %q: %s", command, output)
+		}
+	}
+}
+
+func TestUnknownCommandReturnsUsageError(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := run([]string{"missing"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("stderr = %q, want unknown command message", stderr.String())
+	}
+}
+
+func TestNewCommandRequiresDirectory(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := run([]string{"new"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "usage: vengo new") {
+		t.Fatalf("stderr = %q, want usage message", stderr.String())
+	}
+}
+
 func TestNewCommandCreatesProjectFiles(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -96,6 +139,56 @@ func TestConfigCommandShowsResolvedConfig(t *testing.T) {
 	}
 	if !strings.Contains(output, "app.name") {
 		t.Fatalf("output missing app.name: %s", output)
+	}
+}
+
+func TestConfigCommandShowsNoValuesMessage(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"config"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "no configuration values found") {
+		t.Fatalf("stdout = %q, want no values message", stdout.String())
+	}
+}
+
+func TestConfigCommandUsesExplicitProfile(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	if err := os.WriteFile(filepath.Join(dir, "application.toml"), []byte("[server]\nport = 8080\n"), 0o644); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "application-prod.toml"), []byte("[server]\nport = 9090\n"), 0o644); err != nil {
+		t.Fatalf("write profile config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"config", "prod"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, stderr.String())
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "active profile: prod") {
+		t.Fatalf("output missing active profile: %s", output)
+	}
+	if !strings.Contains(output, "9090") {
+		t.Fatalf("output missing profile override: %s", output)
 	}
 }
 
@@ -179,6 +272,29 @@ func TestDepsCommandMissingFile(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "no vengo-deps.json") {
 		t.Fatalf("stderr = %q, want missing file message", stderr.String())
+	}
+}
+
+func TestDepsCommandInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	original, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(original)
+
+	if err := os.WriteFile(filepath.Join(dir, "vengo-deps.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatalf("write deps file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"deps"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "parse vengo-deps.json") {
+		t.Fatalf("stderr = %q, want parse error", stderr.String())
 	}
 }
 
