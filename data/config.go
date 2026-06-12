@@ -13,4 +13,5 @@ type Config struct {
 	SlowQueryThreshold   time.Duration `config:"database.slow-query-threshold" default:"0s"`
 	MigrationsTable      string        `config:"database.migrations-table" default:"schema_migrations"`
 	MigrationsPathPrefix string        `config:"database.migrations-path-prefix" default:"migrations"`
+	Dialect              Dialect       `config:"-" json:"-"`
 }

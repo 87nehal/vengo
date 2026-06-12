@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"sort"
@@ -35,6 +36,9 @@ type Server struct {
 	httpServer  *http.Server
 	middlewares []Middleware
 	routes      []Route
+	ipv4Only    bool
+	readyHook   ReadyHook
+	errCh       chan error
 }
 
 type Route struct {
@@ -42,15 +46,46 @@ type Route struct {
 	Method  string
 }
 
-func New(addr string) *Server {
+type ServerOption func(*Server)
+
+func WithIPv4Only() ServerOption {
+	return func(s *Server) {
+		s.ipv4Only = true
+	}
+}
+
+type ReadyHook func(addr string)
+
+func (s *Server) OnReady(fn ReadyHook) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readyHook = fn
+}
+
+func (s *Server) ErrChan() <-chan error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.errCh == nil {
+		s.errCh = make(chan error, 1)
+	}
+	return s.errCh
+}
+
+func New(addr string, opts ...ServerOption) *Server {
 	if addr == "" {
 		addr = ":8080"
 	}
-	return &Server{
+	s := &Server{
 		addr:        addr,
 		mux:         http.NewServeMux(),
 		middlewares: make([]Middleware, 0),
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
+	return s
 }
 
 func (s *Server) Name() string {
@@ -166,6 +201,26 @@ type Validator interface {
 }
 
 func BindJSON(r *http.Request, target any) *Error {
+	if r.Body == nil {
+		return BadRequest("request body is empty")
+	}
+
+	decoder := json.NewDecoder(r.Body)
+
+	if err := decoder.Decode(target); err != nil {
+		return WrapError(http.StatusBadRequest, "invalid JSON", err)
+	}
+
+	if validator, ok := target.(Validator); ok {
+		if err := validator.Valid(); err != nil {
+			return WrapError(http.StatusBadRequest, "validation failed", err)
+		}
+	}
+
+	return nil
+}
+
+func BindJSONStrict(r *http.Request, target any) *Error {
 	if r.Body == nil {
 		return BadRequest("request body is empty")
 	}
@@ -289,6 +344,20 @@ func (s *Server) FormatRoutes(w io.Writer) {
 	}
 }
 
+type readyListener struct {
+	net.Listener
+	once    sync.Once
+	onReady func()
+}
+
+func (l *readyListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err == nil {
+		l.once.Do(l.onReady)
+	}
+	return conn, err
+}
+
 func (s *Server) Start(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -296,7 +365,12 @@ func (s *Server) Start(context.Context) error {
 		return nil
 	}
 
-	listener, err := net.Listen("tcp", s.addr)
+	network := "tcp"
+	if s.ipv4Only {
+		network = "tcp4"
+	}
+
+	listener, err := net.Listen(network, s.addr)
 	if err != nil {
 		return err
 	}
@@ -309,9 +383,33 @@ func (s *Server) Start(context.Context) error {
 	s.listener = listener
 	s.httpServer = server
 
+	var rListener net.Listener = listener
+	if s.readyHook != nil {
+		rListener = &readyListener{
+			Listener: listener,
+			onReady: func() {
+				s.mu.Lock()
+				hook := s.readyHook
+				s.mu.Unlock()
+				if hook != nil {
+					hook(listener.Addr().String())
+				}
+			},
+		}
+	}
+
 	go func() {
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			// Future diagnostics package will record background server failures.
+		log.Printf("web server listening on %s (network: %s)", listener.Addr().String(), network)
+		if err := server.Serve(rListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("web server error: %v", err)
+			s.mu.Lock()
+			if s.errCh != nil {
+				select {
+				case s.errCh <- err:
+				default:
+				}
+			}
+			s.mu.Unlock()
 		}
 	}()
 

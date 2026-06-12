@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"strings"
 
 	"github.com/87nehal/vengo/actuator"
 	"github.com/87nehal/vengo/config"
@@ -17,6 +18,8 @@ const (
 	DBServiceName = "data.db"
 	// InstrumentedDBServiceName is registered when slow query logging is enabled.
 	InstrumentedDBServiceName = "data.instrumented-db"
+	// DialectServiceName is the named service key for the active database dialect.
+	DialectServiceName = "data.dialect"
 )
 
 // Module integrates database/sql with a vengo app.
@@ -50,6 +53,13 @@ func WithConfig(cfg Config) Option {
 	return func(m *Module) {
 		m.cfg = cfg
 		m.explicitConfig = true
+	}
+}
+
+// WithDialect explicitly sets the database dialect instead of auto-detecting from the driver name.
+func WithDialect(d Dialect) Option {
+	return func(m *Module) {
+		m.cfg.Dialect = d
 	}
 }
 
@@ -100,6 +110,14 @@ func (m *Module) Configure(app *core.App) error {
 		}
 	}
 
+	if m.cfg.Dialect == nil && m.cfg.Driver != "" {
+		d, err := DialectForDriver(m.cfg.Driver)
+		if err != nil {
+			return err
+		}
+		m.cfg.Dialect = d
+	}
+
 	logger := m.logger
 	if logger == nil {
 		if appLogger, ok := actuator.LoggerFromApp(app); ok {
@@ -117,6 +135,22 @@ func (m *Module) Configure(app *core.App) error {
 		}
 		if m.cfg.DSN == "" {
 			return fmt.Errorf("database.dsn is required")
+		}
+		if m.cfg.Driver == "mysql" || m.cfg.Driver == "mariadb" {
+			if !strings.Contains(m.cfg.DSN, "parseTime=") {
+				if strings.Contains(m.cfg.DSN, "?") {
+					m.cfg.DSN += "&parseTime=true"
+				} else {
+					m.cfg.DSN += "?parseTime=true"
+				}
+				if logger != nil {
+					logger.Warn("parseTime=true was not found in MySQL/MariaDB DSN; appended automatically to support scanning DATETIME/TIMESTAMP into time.Time")
+				}
+			} else if strings.Contains(m.cfg.DSN, "parseTime=false") {
+				if logger != nil {
+					logger.Warn("parseTime is set to false in MySQL/MariaDB DSN; scanning DATETIME/TIMESTAMP into time.Time fields will fail at runtime")
+				}
+			}
 		}
 		opened, err := sql.Open(m.cfg.Driver, m.cfg.DSN)
 		if err != nil {
@@ -145,6 +179,15 @@ func (m *Module) Configure(app *core.App) error {
 		}
 	}
 
+	if m.cfg.Dialect != nil {
+		if err := app.Register(DialectServiceName, m.cfg.Dialect); err != nil {
+			if created {
+				_ = db.Close()
+			}
+			return err
+		}
+	}
+
 	m.db = db
 	m.createdDatabase = created
 
@@ -155,7 +198,7 @@ func (m *Module) Configure(app *core.App) error {
 				return fmt.Errorf("ping database: %w", err)
 			}
 			if m.migrationsFS != nil {
-				if err := ApplyMigrations(ctx, db, m.migrationsFS, MigrationOptions{Table: m.cfg.MigrationsTable, Prefix: m.cfg.MigrationsPathPrefix}); err != nil {
+				if err := ApplyMigrations(ctx, db, m.migrationsFS, MigrationOptions{Table: m.cfg.MigrationsTable, Prefix: m.cfg.MigrationsPathPrefix, Dialect: m.cfg.Dialect}); err != nil {
 					return fmt.Errorf("apply migrations: %w", err)
 				}
 			}

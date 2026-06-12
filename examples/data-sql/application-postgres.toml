@@ -1,0 +1,9 @@
+database.driver = "postgres"
+database.dsn = "postgres://postgres:postgres@localhost:5432/vengo_test?sslmode=disable"
+database.max-open-conns = 10
+database.max-idle-conns = 5
+database.conn-max-lifetime = "5m"
+database.conn-max-idle-time = "1m"
+database.slow-query-threshold = "1ms"
+database.migrations-table = "schema_migrations"
+database.migrations-path-prefix = "migrations"

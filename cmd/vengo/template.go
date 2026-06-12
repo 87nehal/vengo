@@ -79,9 +79,6 @@ func renderProjectTemplate(appName, module string, modules []projectModule) stri
 	stdImports := []string{
 		`	"context"`,
 		`	"log"`,
-		`	"os"`,
-		`	"os/signal"`,
-		`	"syscall"`,
 		`	"time"`,
 	}
 	if usesWeb {
@@ -90,6 +87,7 @@ func renderProjectTemplate(appName, module string, modules []projectModule) stri
 
 	// Build Vengo imports dynamically
 	vengoImports := []string{
+		`	"github.com/87nehal/vengo/cmd"`,
 		`	"github.com/87nehal/vengo/config"`,
 		`	"github.com/87nehal/vengo/core"`,
 	}
@@ -179,8 +177,7 @@ import (
 
 ` + configStruct + `
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	ctx := cmd.NotifyShutdown(context.Background())
 
 ` + serverBlock + appStart + `
 

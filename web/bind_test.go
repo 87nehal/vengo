@@ -102,8 +102,23 @@ func TestBindJSON_UnknownFields(t *testing.T) {
 
 	var user testUser
 	err := BindJSON(r, &user)
+	if err != nil {
+		t.Fatalf("expected BindJSON to succeed with unknown fields, got: %v", err)
+	}
+	if user.Name != "John" {
+		t.Errorf("Name = %q, want John", user.Name)
+	}
+}
+
+func TestBindJSONStrict_UnknownFields(t *testing.T) {
+	body := `{"name":"John","email":"john@example.com","age":30,"unknown":"field"}`
+	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+
+	var user testUser
+	err := BindJSONStrict(r, &user)
 	if err == nil {
-		t.Fatal("expected error for unknown fields")
+		t.Fatal("expected error for BindJSONStrict with unknown fields")
 	}
 	if err.Code != http.StatusBadRequest {
 		t.Errorf("Code = %d, want %d", err.Code, http.StatusBadRequest)
