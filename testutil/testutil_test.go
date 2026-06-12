@@ -115,22 +115,16 @@ func TestHTTPServerAndHelpers(t *testing.T) {
 		t.Errorf("expected URL to use ephemeral port, got %q", url)
 	}
 
-	resp := app.Get("/hello")
-	if resp.Status() != http.StatusOK {
-		t.Errorf("expected status 200, got %d", resp.Status())
-	}
+	resp := app.Get("/hello").ExpectStatus(http.StatusOK).ExpectContains("hello world")
 	body := resp.BodyString()
 	if body != "hello world" {
 		t.Errorf("expected body 'hello world', got %q", body)
 	}
 
 	postBody := strings.NewReader(`{"input": "vengo"}`)
-	postResp := app.Post("/json", "application/json", postBody)
-	if postResp.Status() != http.StatusOK {
-		t.Errorf("expected status 200, got %d", postResp.Status())
-	}
+	postResp := app.Post("/json", "application/json", postBody).ExpectStatus(http.StatusOK)
 	var res map[string]string
-	postResp.JSON(&res)
+	postResp.ExpectJSON(&res)
 	if res["received"] != "vengo" {
 		t.Errorf("expected received 'vengo', got %q", res["received"])
 	}

@@ -9,13 +9,29 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/87nehal/vengo/core"
+	"github.com/go-playground/validator/v10"
 )
+
+var validate = validator.New()
+
+func formatValidationErrors(err error) string {
+	var errs validator.ValidationErrors
+	if errors.As(err, &errs) {
+		var msgs []string
+		for _, e := range errs {
+			msgs = append(msgs, fmt.Sprintf("Field '%s' failed on the '%s' tag", e.Field(), e.Tag()))
+		}
+		return strings.Join(msgs, ", ")
+	}
+	return err.Error()
+}
 
 const ServiceName = "web.server"
 
@@ -39,6 +55,7 @@ type Server struct {
 	ipv4Only    bool
 	readyHook   ReadyHook
 	errCh       chan error
+	app         *core.App
 }
 
 type Route struct {
@@ -93,6 +110,9 @@ func (s *Server) Name() string {
 }
 
 func (s *Server) Configure(app *core.App) error {
+	s.mu.Lock()
+	s.app = app
+	s.mu.Unlock()
 	if err := app.Register(ServiceName, s); err != nil {
 		return err
 	}
@@ -116,6 +136,10 @@ func (s *Server) HandleFunc(pattern string, handler func(http.ResponseWriter, *h
 	s.routes = append(s.routes, parseRoute(pattern))
 	s.mu.Unlock()
 	s.mux.HandleFunc(pattern, handler)
+}
+
+func (s *Server) HandleError(pattern string, handler ErrorHandlerFunc) {
+	s.Handle(pattern, ErrorHandler(handler))
 }
 
 func parseRoute(pattern string) Route {
@@ -217,6 +241,16 @@ func BindJSON(r *http.Request, target any) *Error {
 		}
 	}
 
+	val := reflect.ValueOf(target)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() == reflect.Struct {
+		if err := validate.Struct(target); err != nil {
+			return WrapError(http.StatusBadRequest, formatValidationErrors(err), err)
+		}
+	}
+
 	return nil
 }
 
@@ -238,7 +272,25 @@ func BindJSONStrict(r *http.Request, target any) *Error {
 		}
 	}
 
+	val := reflect.ValueOf(target)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() == reflect.Struct {
+		if err := validate.Struct(target); err != nil {
+			return WrapError(http.StatusBadRequest, formatValidationErrors(err), err)
+		}
+	}
+
 	return nil
+}
+
+func BindAndValidate[T any](r *http.Request) (T, *Error) {
+	var target T
+	if err := BindJSON(r, &target); err != nil {
+		return target, err
+	}
+	return target, nil
 }
 
 func (s *Server) Use(middlewares ...Middleware) {
@@ -265,6 +317,10 @@ func (g *Group) HandleFunc(pattern string, handler http.HandlerFunc) {
 
 func (g *Group) Handle(pattern string, handler http.Handler) {
 	g.server.Handle(g.fullPattern(pattern), applyMiddleware(handler, g.middlewares))
+}
+
+func (g *Group) HandleError(pattern string, handler ErrorHandlerFunc) {
+	g.Handle(pattern, ErrorHandler(handler))
 }
 
 // fullPattern prepends the group prefix to the path component of the
@@ -360,6 +416,49 @@ func (l *readyListener) Accept() (net.Conn, error) {
 
 func (s *Server) Start(context.Context) error {
 	s.mu.Lock()
+	hasServer := s.httpServer != nil
+	s.mu.Unlock()
+	if hasServer {
+		return nil
+	}
+
+	if s.app != nil {
+		registrarType := reflect.TypeOf((*RouteRegistrar)(nil)).Elem()
+		registrars := s.app.Container().ProvidersImplementing(registrarType)
+		for _, t := range registrars {
+			instance, err := s.app.ResolveType(t)
+			if err != nil {
+				return fmt.Errorf("resolve route registrar %s: %w", t, err)
+			}
+			if registrar, ok := instance.(RouteRegistrar); ok {
+				group := registrar.Routes()
+				g := s.Group(group.Prefix)
+				for _, r := range group.Routes {
+					pattern := r.Method + " " + r.Pattern
+					if r.Method == "" {
+						pattern = r.Pattern
+					}
+
+					switch h := r.Handler.(type) {
+					case ErrorHandlerFunc:
+						g.HandleError(pattern, h)
+					case func(http.ResponseWriter, *http.Request) error:
+						g.HandleError(pattern, h)
+					case http.Handler:
+						g.Handle(pattern, h)
+					case func(http.ResponseWriter, *http.Request):
+						g.HandleFunc(pattern, h)
+					case http.HandlerFunc:
+						g.Handle(pattern, h)
+					default:
+						return fmt.Errorf("unsupported handler type: %T for route %s", r.Handler, pattern)
+					}
+				}
+			}
+		}
+	}
+
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.httpServer != nil {
 		return nil
@@ -429,8 +528,8 @@ func (s *Server) Stop(ctx context.Context) error {
 	return server.Shutdown(ctx)
 }
 
-func WriteJSON(w http.ResponseWriter, status int, value any) {
+func WriteJSON(w http.ResponseWriter, status int, value any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	return json.NewEncoder(w).Encode(value)
 }

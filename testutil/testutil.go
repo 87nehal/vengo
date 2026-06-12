@@ -93,7 +93,21 @@ func (a *App) URL(path string) string {
 // Response is a wrapper around http.Response providing utility methods for testing assertions.
 type Response struct {
 	*http.Response
-	t *testing.T
+	t        *testing.T
+	bodyRead bool
+	bodyData []byte
+	readErr  error
+}
+
+func (r *Response) readBody() ([]byte, error) {
+	if !r.bodyRead {
+		r.bodyRead = true
+		if r.Body != nil {
+			r.bodyData, r.readErr = io.ReadAll(r.Body)
+			_ = r.Body.Close()
+		}
+	}
+	return r.bodyData, r.readErr
 }
 
 // Status returns the HTTP status code of the response.
@@ -104,21 +118,49 @@ func (r *Response) Status() int {
 // BodyString reads and returns the response body as a string.
 func (r *Response) BodyString() string {
 	r.t.Helper()
-	defer r.Body.Close()
-	body, err := io.ReadAll(r.Body)
+	data, err := r.readBody()
 	if err != nil {
 		r.t.Fatalf("failed to read response body: %v", err)
 	}
-	return string(body)
+	return string(data)
 }
 
 // JSON decodes the JSON response body into the target structure.
 func (r *Response) JSON(target any) {
 	r.t.Helper()
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(target); err != nil {
+	data, err := r.readBody()
+	if err != nil {
+		r.t.Fatalf("failed to read response body: %v", err)
+	}
+	if err := json.Unmarshal(data, target); err != nil {
 		r.t.Fatalf("failed to decode response JSON: %v", err)
 	}
+}
+
+// ExpectStatus asserts that the response HTTP status code matches the expected code.
+func (r *Response) ExpectStatus(code int) *Response {
+	r.t.Helper()
+	if r.StatusCode != code {
+		r.t.Fatalf("expected status %d, got %d", code, r.StatusCode)
+	}
+	return r
+}
+
+// ExpectContains asserts that the response body contains the specified substring.
+func (r *Response) ExpectContains(substring string) *Response {
+	r.t.Helper()
+	body := r.BodyString()
+	if !strings.Contains(body, substring) {
+		r.t.Fatalf("expected body to contain %q, but got %q", substring, body)
+	}
+	return r
+}
+
+// ExpectJSON unmarshals the response body into the target structure.
+func (r *Response) ExpectJSON(target any) *Response {
+	r.t.Helper()
+	r.JSON(target)
+	return r
 }
 
 // Request executes an HTTP request against the running application.

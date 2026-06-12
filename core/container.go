@@ -296,6 +296,10 @@ func Resolve[T any](app *App) (T, error) {
 	return typed, nil
 }
 
+func (c *Container) ResolveType(app *App, targetType reflect.Type) (any, error) {
+	return c.resolve(app, targetType)
+}
+
 type Wire[T any] struct {
 	app *App
 }
@@ -395,4 +399,16 @@ func (c *Container) FormatGraph(w io.Writer) {
 
 func WriteGraph(app *App, w io.Writer) {
 	app.Container().FormatGraph(w)
+}
+
+func (c *Container) ProvidersImplementing(interfaceType reflect.Type) []reflect.Type {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var types []reflect.Type
+	for t := range c.providers {
+		if t.Implements(interfaceType) {
+			types = append(types, t)
+		}
+	}
+	return types
 }

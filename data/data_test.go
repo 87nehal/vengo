@@ -211,6 +211,25 @@ func TestWithTxRollback(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+func TestGenericWithTx(t *testing.T) {
+	db := memoryDB(t, "gentx")
+	res, err := WithTx(context.Background(), db, func(ctx context.Context, tx *sql.Tx) (string, error) {
+		if _, ok := TxFromContext(ctx); !ok {
+			t.Fatal("missing tx in context")
+		}
+		_, err := tx.ExecContext(ctx, "INSERT INTO widgets (name) VALUES (?)", "a")
+		return "hello-result", err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != "hello-result" {
+		t.Fatalf("unexpected result: %q", res)
+	}
+	if got := len(memoryStateFor("gentx").widgets); got != 1 {
+		t.Fatalf("widgets=%d", got)
+	}
+}
 func TestApplyMigrations(t *testing.T) {
 	db := memoryDB(t, "migrate")
 	fsys := fstest.MapFS{"migrations/002_second.sql": {Data: []byte("INSERT INTO widgets (name) VALUES ('b')")}, "migrations/001_first.sql": {Data: []byte("INSERT INTO widgets (name) VALUES ('a')")}, "migrations/readme.txt": {Data: []byte("skip")}}

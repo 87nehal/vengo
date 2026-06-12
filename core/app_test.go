@@ -4,6 +4,8 @@ import (
 	"context"
 	"reflect"
 	"testing"
+
+	"github.com/87nehal/vengo/autowire"
 )
 
 type testModule struct {
@@ -74,3 +76,42 @@ func TestDuplicateServiceFails(t *testing.T) {
 		t.Fatal("expected duplicate service registration to fail")
 	}
 }
+
+type depA struct {
+	Value string
+}
+
+func newDepA() *depA {
+	return &depA{Value: "depA-value"}
+}
+
+type depB struct {
+	DepA *depA `inject:""`
+}
+
+func newDepB() *depB {
+	return &depB{}
+}
+
+func TestAutowireDiscovery(t *testing.T) {
+	autowire.Register(newDepA)
+	autowire.Register(newDepB)
+
+	app := New("test-autowire")
+	if err := app.Configure(); err != nil {
+		t.Fatalf("configure failed: %v", err)
+	}
+
+	b, err := Resolve[*depB](app)
+	if err != nil {
+		t.Fatalf("resolve depB failed: %v", err)
+	}
+
+	if b.DepA == nil {
+		t.Fatal("depB.DepA is nil (injection failed)")
+	}
+	if b.DepA.Value != "depA-value" {
+		t.Errorf("expected 'depA-value', got %q", b.DepA.Value)
+	}
+}
+

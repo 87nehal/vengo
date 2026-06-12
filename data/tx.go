@@ -59,3 +59,41 @@ func (m *TxManager) WithTx(ctx context.Context, fn func(context.Context, *sql.Tx
 
 	return tx.Commit()
 }
+
+// WithTx runs fn inside a transaction, committing on success and rolling back on error or panic.
+func WithTx[T any](ctx context.Context, db *sql.DB, fn func(context.Context, *sql.Tx) (T, error)) (T, error) {
+	var zero T
+	if db == nil {
+		return zero, fmt.Errorf("database is nil")
+	}
+	if fn == nil {
+		return zero, fmt.Errorf("transaction function is nil")
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return zero, err
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = tx.Rollback()
+			panic(recovered)
+		}
+	}()
+
+	result, err := fn(ContextWithTx(ctx, tx), tx)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return result, fmt.Errorf("transaction failed: %w; rollback failed: %v", err, rollbackErr)
+		}
+		return result, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+

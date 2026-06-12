@@ -169,3 +169,56 @@ func TestBindJSON_IntegrationWithHandler(t *testing.T) {
 		t.Errorf("body = %q, want to contain user data", rec.Body.String())
 	}
 }
+
+type validatedUser struct {
+	Name  string `json:"name" validate:"required"`
+	Email string `json:"email" validate:"required,email"`
+	Age   int    `json:"age" validate:"gte=0,lte=150"`
+}
+
+func TestBindJSON_StructTagValidation(t *testing.T) {
+	// 1. Success case
+	body := `{"name":"Alice","email":"alice@example.com","age":30}`
+	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+
+	var user validatedUser
+	if err := BindJSON(r, &user); err != nil {
+		t.Fatalf("BindJSON() error = %v", err)
+	}
+	if user.Name != "Alice" {
+		t.Errorf("Name = %q, want Alice", user.Name)
+	}
+
+	// 2. Failure case (invalid email, missing name)
+	body = `{"email":"invalid-email","age":-10}`
+	r = httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+
+	var badUser validatedUser
+	err := BindJSON(r, &badUser)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if err.Code != http.StatusBadRequest {
+		t.Errorf("Code = %d, want 400", err.Code)
+	}
+	if !strings.Contains(err.Error(), "failed on the") {
+		t.Errorf("expected error message to mention validation failure tags, got: %q", err.Error())
+	}
+}
+
+func TestBindAndValidate(t *testing.T) {
+	body := `{"name":"Bob","email":"bob@example.com","age":25}`
+	r := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+
+	user, err := BindAndValidate[validatedUser](r)
+	if err != nil {
+		t.Fatalf("BindAndValidate() error = %v", err)
+	}
+	if user.Name != "Bob" {
+		t.Errorf("expected Name Bob, got %q", user.Name)
+	}
+}
+

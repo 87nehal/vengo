@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"sync"
+
+	"github.com/87nehal/vengo/autowire"
 )
 
 const ConfigServiceName = "config"
@@ -139,6 +142,10 @@ func Get[T any](app *App, name string) (T, error) {
 	return typed, nil
 }
 
+func (a *App) ResolveType(t reflect.Type) (any, error) {
+	return a.container.ResolveType(a, t)
+}
+
 func (a *App) Start(ctx context.Context) error {
 	if err := a.Configure(); err != nil {
 		return err
@@ -194,6 +201,12 @@ func (a *App) Configure() error {
 	}
 	modules := append([]Module(nil), a.modules...)
 	a.mu.Unlock()
+
+	for _, constructor := range autowire.Constructors() {
+		if err := a.provide(providerName(constructor), constructor); err != nil {
+			return fmt.Errorf("autowire provider: %w", err)
+		}
+	}
 
 	for _, module := range modules {
 		if module == nil {

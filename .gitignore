@@ -4,7 +4,7 @@ coverage.out
 *.test
 tmp/
 .DS_Store
-docs/*
+# docs/*
 *exe
 *.log
 *.out
